@@ -192,6 +192,186 @@ WEB_TOOLS: list[dict] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Rate limiting & context management helpers
+# ---------------------------------------------------------------------------
+
+# Inter-agent pause to spread token consumption across the per-minute window.
+# Tier 1 Anthropic accounts have 30K input tokens/min — three v2 specialists
+# back-to-back can blow that. 8s throttle keeps you under the ceiling.
+# Override via env var if you've upgraded to Tier 2/3.
+INTER_AGENT_THROTTLE_S = float(os.getenv("INTER_AGENT_THROTTLE_S", "8"))
+
+
+def _parse_retry_after(api_error: APIStatusError, default: int = 60) -> int:
+    """Extract the retry-after header value from a 429 response.
+    Anthropic returns it in seconds. Fallback to default if absent or unparseable."""
+    try:
+        if hasattr(api_error, "response") and api_error.response is not None:
+            ra = api_error.response.headers.get("retry-after")
+            if ra:
+                # Header can be either an integer-seconds or HTTP date — we only
+                # handle integer-seconds, which is what Anthropic returns.
+                return int(float(ra)) + 2  # small buffer
+    except (ValueError, AttributeError, TypeError):
+        pass
+    return default
+
+
+def summarize_for_context(agent_id: str, data: dict) -> dict:
+    """Strip a specialist's full output down to just the fields downstream
+    agents actually need. This is the single biggest cost lever — full JSON
+    dumps of all prior agents balloon the input context to 25-35K tokens by
+    the time Strategy runs, blowing past Tier 1 rate limits.
+
+    Each summariser keeps the load-bearing claims and confidence scores so
+    downstream agents can still see uncertainty levels, but drops verbose
+    sub-fields, source dumps, and cross-references."""
+    if not isinstance(data, dict):
+        return {"_raw": str(data)[:1000]}
+
+    if agent_id == "market":
+        market = data.get("india_market", {}) or {}
+        tam = data.get("tam_sam_som", {}) or {}
+        return {
+            "india_market": {
+                "size_inr_cr": market.get("size_estimate_inr_cr"),
+                "growth_outlook": market.get("growth_outlook"),
+                "tier_split": market.get("tier_1_2_3_split"),
+                "key_dynamics": (market.get("key_dynamics") or [])[:4],
+                "confidence": market.get("confidence"),
+            },
+            "tam_sam_som": {
+                "tam_inr_cr": tam.get("tam_inr_cr"),
+                "sam_inr_cr": tam.get("sam_inr_cr"),
+                "som_y3_inr_cr": tam.get("som_year_3_inr_cr"),
+                "key_assumptions": (tam.get("key_assumptions") or [])[:3],
+                "confidence": tam.get("confidence"),
+            },
+            "top_competitors": [
+                {"name": c.get("name"), "moat": c.get("moat"), "vulnerability": c.get("vulnerability")}
+                for c in (data.get("competitive_landscape") or [])[:3]
+            ],
+            "import_failure_risks": (data.get("import_failure_risks") or [])[:3],
+            "open_questions": (data.get("open_questions") or [])[:2],
+        }
+
+    if agent_id == "consumer_groundtruth":
+        pop = data.get("target_population", {}) or {}
+        env = data.get("economic_envelope", {}) or {}
+        bb = data.get("behavioural_baseline", {}) or {}
+        return {
+            "target_population": {
+                "condition": pop.get("condition_or_need"),
+                "prevalence": pop.get("national_prevalence"),
+                "tier_split": pop.get("tier_1_2_3_split"),
+            },
+            "economic_envelope": {
+                "median_income_tier_2_inr_monthly": env.get("median_household_income_inr_monthly_tier_2"),
+                "oop_share": env.get("out_of_pocket_share"),
+                "smartphone_penetration": env.get("smartphone_penetration_target_demo"),
+            },
+            "behavioural_baseline": {
+                "current_pattern": bb.get("current_care_seeking_pattern"),
+                "drop_offs": (bb.get("drop_off_points") or [])[:3],
+            },
+            "constraints_for_persona_agent": (data.get("constraints_for_persona_agent") or [])[:5],
+        }
+
+    if agent_id == "consumer":
+        p = data.get("primary_persona", {}) or {}
+        return {
+            "primary_persona": {
+                "name": p.get("name"),
+                "age": p.get("age"),
+                "city_tier": p.get("city_tier"),
+                "city_name": p.get("city_name"),
+                "household_income_inr_monthly": p.get("household_income_inr_monthly"),
+                "occupation": p.get("occupation"),
+                "jobs_to_be_done": p.get("jobs_to_be_done"),
+                "top_triggers": (p.get("triggers_to_adopt") or [])[:3],
+                "top_barriers": (p.get("barriers_to_adopt") or [])[:3],
+                "moments_of_truth": (p.get("moments_of_truth") or [])[:3],
+                "confidence": p.get("confidence"),
+            },
+            "caregiver_role": (data.get("caregiver_persona", {}) or {}).get("role_in_decision"),
+            "churn_reasons": ((data.get("churned_persona", {}) or {}).get("why_they_left") or [])[:3],
+        }
+
+    if agent_id == "strategy":
+        return {
+            "primary_segment": (data.get("segmentation", {}) or {}).get("primary_segment"),
+            "value_prop": (data.get("positioning", {}) or {}).get("one_line_value_prop"),
+            "vs_do_nothing": (data.get("positioning", {}) or {}).get("vs_do_nothing"),
+            "strategic_posture": (data.get("strategic_posture", {}) or {}).get("chosen"),
+            "wedge": (data.get("gtm_motion", {}) or {}).get("wedge"),
+            "build_partner_acquire": [
+                {"capability": b.get("capability"), "decision": b.get("decision")}
+                for b in (data.get("build_partner_acquire") or [])[:5]
+            ],
+            "anti_strategy": data.get("anti_strategy"),
+        }
+
+    if agent_id == "product":
+        m = data.get("mvp_scope", {}) or {}
+        prd = data.get("prd", {}) or {}
+        return {
+            "riskiest_assumption": m.get("riskiest_assumption_being_tested"),
+            "critical_features": (m.get("critical") or [])[:5],
+            "definition_of_done": m.get("definition_of_done"),
+            "north_star_metric": (prd.get("success_metrics", {}) or {}).get("north_star"),
+            "problem_statement": prd.get("problem_statement"),
+        }
+
+    if agent_id == "regulatory":
+        return {
+            "recommended_posture": data.get("recommended_posture"),
+            "applicable_instruments": [
+                {"instrument": i.get("instrument"), "status": i.get("current_status")}
+                for i in (data.get("applicable_instruments") or [])
+                if i.get("applies")
+            ][:6],
+            "redlines": (data.get("redlines") or [])[:3],
+            "setup_cost_inr": (data.get("operational_load", {}) or {}).get("estimated_setup_cost_inr"),
+        }
+
+    if agent_id == "metrics":
+        ns = (data.get("metric_tree", {}) or {}).get("north_star", {}) or {}
+        return {
+            "north_star_metric": ns.get("metric"),
+            "north_star_y3_target": ns.get("target_year_3"),
+            "primary_moat_focus": data.get("primary_moat_focus"),
+            "numerical_consistency_check": data.get("numerical_consistency_check"),
+            "what_survives_if_tech_changes": data.get("what_survives_if_tech_changes"),
+        }
+
+    if agent_id == "design":
+        # Drop the SVG and verbose screen specs — downstream synth doesn't need them
+        return {
+            "screen_choice": data.get("screen_choice"),
+            "horizons": [
+                (data.get("roadmap", {}) or {}).get(k, {}).get("objective")
+                for k in ("horizon_1_launch", "horizon_2_scale", "horizon_3_moat")
+            ],
+        }
+
+    # master_intake — keep almost everything, it's load-bearing for all specialists
+    if agent_id == "master_intake":
+        return {
+            "interpreted_brief": data.get("interpreted_brief"),
+            "five_whys": [
+                {"layer": w.get("layer"), "answer": w.get("answer")}
+                for w in (data.get("five_whys") or [])
+            ],
+            "go_no_go": data.get("go_no_go"),
+            "rationale": data.get("rationale"),
+            "stakeholder_map": data.get("stakeholder_map"),
+            "open_questions": (data.get("open_questions") or [])[:5],
+        }
+
+    return data  # fallback: return as-is
+
+
 async def call_prose(
     system_prompt: str,
     user_message: str,
@@ -208,7 +388,11 @@ async def call_prose(
         return ProseResult("", error="ANTHROPIC_API_KEY not configured on server")
 
     last_err: str | None = None
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    rate_limit_hits = 0
+    MAX_RATE_LIMIT_HITS = 4  # absolute cap — won't loop forever on persistent throttling
+    while attempt < max_attempts:
+        attempt += 1
         try:
             kwargs = {
                 "model": model,
@@ -235,7 +419,16 @@ async def call_prose(
         except APIStatusError as e:
             last_err = f"API {e.status_code}: {str(e)[:300]}"
             if e.status_code == 429:
-                await asyncio.sleep(min(5 * attempt, 15))
+                rate_limit_hits += 1
+                if rate_limit_hits > MAX_RATE_LIMIT_HITS:
+                    return ProseResult("", error=f"Rate-limited {MAX_RATE_LIMIT_HITS}+ times in a row; giving up. {last_err}")
+                # Honour retry-after header. Default 60s; the input-tokens-per-min
+                # throttle resets on a sliding minute window.
+                wait_s = _parse_retry_after(e, default=60)
+                wait_s = min(wait_s, 90)  # cap so we don't hang forever
+                await asyncio.sleep(wait_s)
+                # 429s shouldn't burn an attempt — it's a wait, not a failure
+                attempt -= 1
                 continue
             if 400 <= e.status_code < 500:
                 # If tool use was the issue, retry without tools
@@ -270,7 +463,11 @@ async def call_structured(
     last_raw = ""
     current_user_message = user_message
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    rate_limit_hits = 0
+    MAX_RATE_LIMIT_HITS = 4
+    while attempt < max_attempts:
+        attempt += 1
         try:
             msg = await client.messages.create(
                 model=model,
@@ -299,7 +496,13 @@ async def call_structured(
         except APIStatusError as e:
             last_err = f"API {e.status_code}: {str(e)[:300]}"
             if e.status_code == 429:
-                await asyncio.sleep(min(5 * attempt, 15))
+                rate_limit_hits += 1
+                if rate_limit_hits > MAX_RATE_LIMIT_HITS:
+                    return StructuredResult(None, last_raw, attempt, error=f"Rate-limited {MAX_RATE_LIMIT_HITS}+ times; giving up. {last_err}")
+                wait_s = _parse_retry_after(e, default=60)
+                wait_s = min(wait_s, 90)
+                await asyncio.sleep(wait_s)
+                attempt -= 1
                 continue
             if 400 <= e.status_code < 500:
                 return StructuredResult(None, last_raw, attempt, error=last_err)
@@ -435,11 +638,13 @@ class RunRequest(BaseModel):
 async def health():
     return {
         "ok": True,
-        "version": "v2",
+        "version": "v2.1",
+        "patch_notes": "rate-limit-aware retries; per-agent context summarisation; inter-agent throttle",
         "api_key_configured": bool(API_KEY),
         "primary_model": MODEL_PRIMARY,
         "validation_model": MODEL_VALIDATION,
         "agents_with_tools": sorted(list(AGENTS_WITH_TOOLS)),
+        "inter_agent_throttle_s": INTER_AGENT_THROTTLE_S,
     }
 
 
@@ -548,11 +753,16 @@ async def run_pipeline_stream(brief: str, skip_validation: bool, enable_tools: b
 
     context = (
         f"BRIEF:\n{brief}\n\n"
-        f"MASTER INTAKE:\n{json.dumps(intake_run.structured, indent=2, ensure_ascii=False)}"
+        f"MASTER INTAKE (summary):\n{json.dumps(summarize_for_context('master_intake', intake_run.structured), indent=2, ensure_ascii=False)}"
     )
 
     # ---- 2-8. Specialists ----
-    for spec_id in SPECIALIST_IDS:
+    for spec_idx, spec_id in enumerate(SPECIALIST_IDS):
+        # Inter-agent throttle: spread the per-minute token consumption.
+        # Skip on the very first specialist since master intake already consumed time.
+        if spec_idx > 0 and INTER_AGENT_THROTTLE_S > 0:
+            await asyncio.sleep(INTER_AGENT_THROTTLE_S)
+
         use_tools = enable_tools and (spec_id in AGENTS_WITH_TOOLS)
         yield sse_event("agent_start", {"id": spec_id, "uses_tools": use_tools})
         spec_run = await run_three_pass_agent(
@@ -575,6 +785,8 @@ async def run_pipeline_stream(brief: str, skip_validation: bool, enable_tools: b
         validation = None
         if not skip_validation:
             yield sse_event("agent_validating", {"id": spec_id})
+            # Validation sees the FULL output (it's the validator's job to scrutinise),
+            # but only the brief + summary of master intake — not all prior specialists.
             validate_input = (
                 f"SPECIALIST: {spec_id}\n\n"
                 f"OUTPUT:\n{json.dumps(spec_run.structured, indent=2, ensure_ascii=False)}\n\n"
@@ -597,7 +809,10 @@ async def run_pipeline_stream(brief: str, skip_validation: bool, enable_tools: b
             "critique": spec_run.critique,
             "validation": validation,
         })
-        context += f"\n\n{spec_id.upper()}:\n{json.dumps(spec_run.structured, indent=2, ensure_ascii=False)}"
+        # Append SUMMARY (not full JSON) to context — keeps token budget under control
+        # while preserving the load-bearing claims for downstream agents.
+        summary = summarize_for_context(spec_id, spec_run.structured)
+        context += f"\n\n{spec_id.upper()} (summary):\n{json.dumps(summary, indent=2, ensure_ascii=False)}"
 
     # ---- 9. Synthesis (two-pass) ----
     yield sse_event("agent_start", {"id": "synthesis"})
