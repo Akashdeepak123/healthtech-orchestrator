@@ -352,6 +352,63 @@
     background: #f2dfd8;
     border: 1px solid var(--red);
   }
+
+  /* v2 additions */
+  .trace-block {
+    margin-bottom: 22px;
+    padding: 12px 14px;
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+  }
+  .drawer {
+    margin-bottom: 22px;
+    border: 1px solid var(--rule);
+  }
+  .drawer-toggle {
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--bg);
+    border: none;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+  }
+  .drawer-toggle:hover { background: var(--panel); }
+  .drawer-content {
+    padding: 4px 14px 14px 14px;
+    border-top: 1px solid var(--rule);
+  }
+  .prose-block {
+    font-family: var(--serif);
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--ink);
+    white-space: pre-wrap;
+    margin-top: 6px;
+  }
+  .screen-svg-frame {
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    padding: 8px;
+    margin-top: 8px;
+  }
+  .screen-svg-frame svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: 800px;
+  }
+  .screen-meta {
+    font-size: 13px;
+    color: var(--ink-soft);
+    font-style: italic;
+    margin-bottom: 8px;
+  }
   .quote-card {
     padding: 16px;
     background: var(--panel);
@@ -461,16 +518,20 @@
 
 <script>
 // ============================================================================
-// State
+// State (v2: tracks per-agent reasoning, critique, and pass progress)
 // ============================================================================
 const state = {
   pipeline: [],
   results: {},        // { agent_id: data }
+  reasoning: {},      // { agent_id: prose from Pass A }
+  critique: {},       // { agent_id: prose from Pass B }
+  currentPass: {},    // { agent_id: 'reason' | 'critique' | 'structure' }
   validations: {},    // { agent_id: validation_data }
   statuses: {},       // { agent_id: 'pending' | 'running' | 'validating' | 'done' | 'error' }
   rawDebug: {},       // { agent_id: raw_text }
   activeAgent: null,
   running: false,
+  showReasoning: {},  // { agent_id: bool } — UI toggle for reasoning expansion
 };
 
 // ============================================================================
@@ -685,9 +746,20 @@ function handleSSEEvent(eventBlock) {
       setStatus(data.id, 'validating');
       setProgress(progressMsgFor(data.id, 'validating'));
       break;
+    case 'agent_pass':
+      state.currentPass[data.id] = data.pass;
+      setProgress(passProgressMsg(data.id, data.pass, data.uses_tools));
+      renderMain();
+      break;
+    case 'agent_pass_done':
+      // No-op for state, just for telemetry; could log timings later
+      break;
     case 'agent_done':
       state.results[data.id] = data.data;
+      if (data.reasoning) state.reasoning[data.id] = data.reasoning;
+      if (data.critique) state.critique[data.id] = data.critique;
       if (data.validation) state.validations[data.id] = data.validation;
+      delete state.currentPass[data.id];
       setStatus(data.id, 'done');
       state.activeAgent = data.id;
       renderMain();
@@ -712,10 +784,23 @@ function handleSSEEvent(eventBlock) {
 function progressMsgFor(agentId, status) {
   const a = state.pipeline.find(x => x.id === agentId);
   const label = a ? a.short : agentId;
-  if (status === 'validating') return `Master validating ${label} output…`;
+  if (status === 'validating') return `Senior partner validating ${label} output…`;
   if (agentId === 'master_intake') return 'Master Orchestrator interrogating the brief…';
   if (agentId === 'synthesis') return 'Master Orchestrator synthesising final verdict…';
   return `${label} specialist working…`;
+}
+
+function passProgressMsg(agentId, pass, usesTools) {
+  const a = state.pipeline.find(x => x.id === agentId);
+  const label = a ? a.short : agentId;
+  if (pass === 'reason') {
+    return usesTools
+      ? `${label}: reasoning out loud (with web search)…`
+      : `${label}: reasoning out loud…`;
+  }
+  if (pass === 'critique') return `${label}: self-critiquing…`;
+  if (pass === 'structure') return `${label}: producing structured output…`;
+  return `${label}: working…`;
 }
 
 // ============================================================================
@@ -743,70 +828,136 @@ async function runPreflight() {
 function renderMain() {
   const root = document.getElementById('main');
   if (!state.activeAgent) {
-    // Restore the empty state
     root.innerHTML = `
       <div class="main-empty">
         <div class="masthead-eyebrow">A note before you begin</div>
         <div class="quote">"The brief is a hypothesis, not a directive. The first thing this system does is interrogate it — five layers down — before any specialist is permitted to start work. Solutioning before interrogation is the most expensive mistake in product strategy."</div>
         <div class="attribution">— From Chapter 3, the Manual</div>
-        <div class="body-text">Paste a brief in the left panel — or load one of the three examples — and press <strong>Run the Pipeline</strong>. The Master Orchestrator will run an intake pass, hand off to seven specialists in sequence, run validation between each, and close with a synthesis.<br><br>Each agent corresponds to chapters in the Healthtech Product Strategy Manual. You can click any completed step in the sidebar to inspect its output.</div>
+        <div class="body-text">Each agent runs three passes: <em>reason</em> (free-form thinking), <em>critique</em> (self-review), <em>structure</em> (final JSON). Market, Consumer, and Regulatory agents have web search enabled. After each specialist, a senior-partner validator runs adversarial checks. Click any completed agent to inspect its full output, including the reasoning trace and any critique.</div>
       </div>`;
     return;
   }
 
   const a = state.pipeline.find(x => x.id === state.activeAgent);
   const data = state.results[state.activeAgent];
+  const reasoning = state.reasoning[state.activeAgent];
+  const critique = state.critique[state.activeAgent];
   const validation = state.validations[state.activeAgent];
   const status = state.statuses[state.activeAgent];
   const rawDebug = state.rawDebug[state.activeAgent];
+  const currentPass = state.currentPass[state.activeAgent];
 
   let html = `
     <div class="agent-header">
-      <div class="agent-header-eyebrow">Agent · ${escapeHtml(a.chapter)}</div>
+      <div class="agent-header-eyebrow">Agent · ${escapeHtml(a.chapter)}${a.uses_tools ? ' · web search enabled' : ''}</div>
       <div class="agent-header-title">${escapeHtml(a.label)}</div>
+      ${data && data.overall_confidence !== undefined ? confidenceBadge(data.overall_confidence, 'Overall confidence') : ''}
     </div>`;
 
+  // Live status if agent is mid-flight
+  if ((status === 'running' || status === 'validating') && currentPass) {
+    const passLabel = {reason: 'PASS A · Reasoning', critique: 'PASS B · Self-Critique', structure: 'PASS C · Structured Output'}[currentPass];
+    html += `<div class="status-box info" style="margin-bottom:20px;">
+      <div class="status-title">In progress</div>
+      <div class="status-detail">${escapeHtml(passLabel)}</div>
+    </div>`;
+  }
+
+  // Adversarial validation panel
   if (validation) {
     const passed = validation.passes_validation;
+    const harshness = validation.harshness_level || 'medium';
     html += `<div class="validation-block ${passed ? 'pass' : 'fail'}">
-      <div class="out-label">Master Validation Pass</div>
+      <div class="out-label">Senior-Partner Validation · ${escapeHtml(harshness)} harshness</div>
       <div style="margin-bottom:8px;">
-        ${pillForValidation('Source', validation.source_check?.status)}
+        ${pillForValidation('Evidence', validation.evidence_check?.status)}
         ${pillForValidation('Consistency', validation.consistency_check?.status)}
-        ${pillForValidation('Completeness', validation.completeness_check?.status)}
+        ${pillForValidation('Hallucination', validation.hallucination_check?.status)}
+        ${validation.demands_revision ? '<span class="pill bad">Demands revision</span>' : ''}
       </div>
-      <div style="font-size:13.5px;font-style:italic;">${escapeHtml(validation.overall_note || '')}</div>
+      <div style="font-size:13.5px;font-style:italic;margin-bottom:8px;">${escapeHtml(validation.overall_note || '')}</div>
+      ${renderValidationIssues(validation)}
+    </div>`;
+  }
+
+  // Reasoning trace (always visible if available — short, in-line)
+  if (data && data.reasoning_trace) {
+    html += `<div class="trace-block">
+      <div class="out-label">Reasoning Trace</div>
+      <div style="font-style:italic;line-height:1.6;">${escapeHtml(data.reasoning_trace)}</div>
+    </div>`;
+  }
+
+  // Reasoning + critique drawer (collapsible)
+  if (reasoning || critique) {
+    const expanded = !!state.showReasoning[state.activeAgent];
+    html += `<div class="drawer">
+      <button class="drawer-toggle" onclick="toggleReasoning('${state.activeAgent}')">
+        ${expanded ? '▼' : '▶'} Show full reasoning &amp; self-critique
+      </button>
+      ${expanded ? `
+        <div class="drawer-content">
+          ${reasoning ? `<div class="out-label" style="margin-top:12px;">Pass A · Reasoning</div><div class="prose-block">${escapeHtml(reasoning)}</div>` : ''}
+          ${critique ? `<div class="out-label" style="margin-top:14px;">Pass B · Self-Critique</div><div class="prose-block">${escapeHtml(critique)}</div>` : ''}
+        </div>` : ''}
     </div>`;
   }
 
   if (data) {
     html += renderAgentData(state.activeAgent, data);
-  } else if (status === 'running' || status === 'validating') {
-    html += `<div class="out-body" style="font-style:italic;color:var(--ink-soft);">Working…</div>`;
   }
 
   if (rawDebug !== undefined) {
     html += `<div class="debug-block">
       <div class="out-label" style="color:var(--red);">Debug · Raw Output (JSON parse failed)</div>`;
     if (rawDebug && rawDebug.trim()) {
-      html += `<div style="font-size:13px;margin-bottom:10px;">The model's response could not be parsed as JSON, even after retry. Below is the raw response — usually this happens when the response was truncated or wrapped in unexpected prose.</div>
-        <pre class="json-debug">${escapeHtml(rawDebug)}</pre>
-        <div style="margin-top:10px;font-family:var(--sans);font-size:11px;font-style:italic;">Length: ${rawDebug.length} characters</div>`;
+      html += `<pre class="json-debug">${escapeHtml(rawDebug)}</pre>`;
     } else {
-      html += `<div style="font-size:13px;line-height:1.6;">
-        <strong>The model returned an empty response.</strong> Both attempts produced no text.<br><br>
-        Most likely causes:
-        <ul style="margin:8px 0;padding-left:22px;">
-          <li>Transient API hiccup — try Run Pipeline again.</li>
-          <li>Rate limit hit — wait a minute and retry.</li>
-          <li>System prompt + brief together hit a content filter (rare).</li>
-        </ul>
-      </div>`;
+      html += `<div style="font-size:13px;">The agent returned an empty or unparseable response. Most likely a transient API issue — try again.</div>`;
     }
     html += `</div>`;
   }
 
   root.innerHTML = html;
+}
+
+function toggleReasoning(agentId) {
+  state.showReasoning[agentId] = !state.showReasoning[agentId];
+  renderMain();
+}
+
+function confidenceBadge(score, label) {
+  const tone = score >= 80 ? 'good' : score >= 60 ? 'warn' : 'bad';
+  return `<span class="pill ${tone}" style="margin-top:8px;display:inline-block;">${escapeHtml(label)}: ${score}/100</span>`;
+}
+
+function smallConfidence(score) {
+  if (score === undefined || score === null) return '';
+  const tone = score >= 80 ? 'good' : score >= 60 ? 'warn' : 'bad';
+  return `<span class="pill ${tone}" style="font-size:10px;padding:1px 6px;margin-left:4px;">${score}</span>`;
+}
+
+function renderValidationIssues(v) {
+  let h = '';
+  ['evidence_check', 'consistency_check', 'hallucination_check'].forEach(key => {
+    const check = v[key];
+    if (!check || !check.issues || check.issues.length === 0) return;
+    h += `<div style="margin-top:6px;font-size:12.5px;">
+      <strong>${escapeHtml(key.replace(/_/g, ' '))}:</strong>
+      <ul style="margin:4px 0 0 18px;padding:0;">
+        ${check.issues.map(iss => `<li>${escapeHtml(iss)}</li>`).join('')}
+      </ul>
+    </div>`;
+  });
+  if (v.specific_fixes_requested && v.specific_fixes_requested.length) {
+    h += `<div style="margin-top:8px;font-size:12.5px;">
+      <strong>Fixes requested:</strong>
+      <ul style="margin:4px 0 0 18px;padding:0;">
+        ${v.specific_fixes_requested.map(f => `<li>${escapeHtml(f)}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+  return h;
 }
 
 function pillForValidation(label, status) {
@@ -1062,9 +1213,26 @@ function renderDesign(d) {
   [['horizon_1_launch','H1 · LAUNCH'],['horizon_2_scale','H2 · SCALE'],['horizon_3_moat','H3 · MOAT']].forEach(([key, label]) => {
     const obj = r[key];
     if (!obj) return;
-    roadmap += `<div class="nested-block accent"><div class="out-label" style="margin-bottom:4px;">${label} · ${escapeHtml(obj.duration || '')}</div><div style="font-weight:600;margin-top:4px;">${escapeHtml(obj.objective || '')}</div><div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Deliverables</div>${bullets(obj.deliverables)}<div style="font-size:13px;margin-top:4px;color:var(--red);">Kill criteria: ${escapeHtml(obj.kill_criteria || '')}</div></div>`;
+    roadmap += `<div class="nested-block accent"><div class="out-label" style="margin-bottom:4px;">${label} · ${escapeHtml(obj.duration || '')}${smallConfidence(obj.confidence)}</div><div style="font-weight:600;margin-top:4px;">${escapeHtml(obj.objective || '')}</div><div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Deliverables</div>${bullets(obj.deliverables)}<div style="font-size:13px;margin-top:4px;color:var(--red);">Kill criteria: ${escapeHtml(obj.kill_criteria || '')}</div></div>`;
   });
   h += section('Roadmap — Three Horizons', roadmap);
+
+  // SVG screen rendering — the marquee feature
+  if (d.screen_svg && d.screen_choice) {
+    const sc = d.screen_choice;
+    const meta = `<div class="screen-meta">${escapeHtml(sc.audience || '')} · ${escapeHtml(sc.why_this_one || '')}</div>`;
+    // Inject SVG raw — it's authored to be safe inline-styled SVG only
+    const svgFrame = `<div class="screen-svg-frame">${d.screen_svg}</div>`;
+    let annotations = '';
+    if (Array.isArray(d.screen_annotations) && d.screen_annotations.length) {
+      annotations = `<div style="margin-top:10px;"><div class="out-label">Annotations</div>` +
+        d.screen_annotations.map(an => `<div style="margin-bottom:6px;font-size:13px;"><strong>${escapeHtml(an.region || '')}:</strong> ${escapeHtml(an.what_is_here || '')} <em style="color:var(--ink-soft);">— ${escapeHtml(an.why || '')}</em></div>`).join('') +
+        `</div>`;
+    }
+    const title = `${(sc.type || '').toUpperCase().replace('_', ' ')} · ${escapeHtml(sc.name || '')}`;
+    h += section(title, meta + svgFrame + annotations);
+  }
+
   if (d.core_flowchart) {
     let fc = `<div class="json-debug" style="font-family:var(--mono);"><div style="margin-bottom:8px;font-weight:600;">Nodes</div>`;
     (d.core_flowchart.nodes || []).forEach(n => fc += `[${escapeHtml(n.id)}] ${escapeHtml(n.label)} <em style="color:var(--ink-soft);">(${escapeHtml(n.type)})</em><br>`);
@@ -1077,9 +1245,12 @@ function renderDesign(d) {
   (d.prototype_spec?.screens || []).forEach(s => {
     screens += `<div class="nested-block"><div style="font-weight:600;">${escapeHtml(s.name)}</div>${kv('Purpose', s.purpose)}<div style="font-size:13px;color:var(--ink-soft);">Key elements</div>${bullets(s.key_elements)}<div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Trust signals</div>${bullets(s.trust_signals)}<div style="font-size:13px;margin-top:4px;"><em>i18n:</em> ${escapeHtml(s.i18n_notes || '')}</div></div>`;
   });
-  h += section('Prototype Spec — Screens', screens);
-  h += section('Interactions', bullets(d.prototype_spec?.interactions));
-  h += section('Demo Data', `<em>${escapeHtml(d.prototype_spec?.demo_data || '')}</em>`);
+  if (screens) h += section('Prototype Spec — Other Screens', screens);
+  if (d.prototype_spec?.interactions) h += section('Interactions', bullets(d.prototype_spec.interactions));
+  if (d.prototype_spec?.demo_data) h += section('Demo Data', `<em>${escapeHtml(d.prototype_spec.demo_data)}</em>`);
+  if (d.uncertainty_log && d.uncertainty_log.length) {
+    h += section('Uncertainty Log', d.uncertainty_log.map(u => `<div class="nested-block"><strong>${escapeHtml(u.item)}</strong><div style="font-size:13px;font-style:italic;color:var(--ink-soft);">${escapeHtml(u.why_uncertain || '')}</div><div style="font-size:13px;">→ ${escapeHtml(u.how_to_resolve || '')}</div></div>`).join(''));
+  }
   return h;
 }
 
@@ -1089,15 +1260,23 @@ function renderSynthesis(d) {
   h += section('The Real Problem', escapeHtml(d.the_real_problem || ''));
   h += section('The Wedge', `<div style="font-size:16px;font-style:italic;">${escapeHtml(d.the_wedge || '')}</div>`);
   h += section('The Moat', `<div style="font-size:16px;font-style:italic;color:var(--green);">${escapeHtml(d.the_moat || '')}</div>`);
+  if (d.agreement_signal) h += section('Agreement Signal', escapeHtml(d.agreement_signal));
+  if (d.tension_signal) h += section('Tension Signal', escapeHtml(d.tension_signal));
   let risks = '';
   (d.top_3_risks || []).forEach(r => {
     const tone = r.likelihood === 'high' ? 'bad' : r.likelihood === 'med' ? 'warn' : 'neutral';
-    risks += `<div class="nested-block red"><span class="pill ${tone}">${escapeHtml(r.likelihood)}</span><span style="font-weight:600;margin-left:4px;">${escapeHtml(r.risk)}</span><div style="font-style:italic;color:var(--ink-soft);margin-top:4px;">Mitigation: ${escapeHtml(r.mitigation || '')}</div></div>`;
+    risks += `<div class="nested-block red"><span class="pill ${tone}">${escapeHtml(r.likelihood)}</span><span style="font-weight:600;margin-left:4px;">${escapeHtml(r.risk)}</span>${smallConfidence(r.confidence)}<div style="font-style:italic;color:var(--ink-soft);margin-top:4px;">Mitigation: ${escapeHtml(r.mitigation || '')}</div></div>`;
   });
   h += section('Top 3 Risks', risks);
   h += section('Next 30 Days — Do', bullets(d.what_to_do_in_next_30_days));
   h += section('Next 30 Days — Don\'t', `<div style="background:#f2dfd8;padding:10px;border:1px solid var(--red);">${bullets(d.what_NOT_to_do)}</div>`);
+  if (d.founder_truth) {
+    h += section('Founder Truth · over coffee, brutally', `<div class="quote-card" style="border-left-color:var(--red);">${escapeHtml(d.founder_truth)}</div>`);
+  }
   h += section('Closing Note · The Pragmatic Visionary', `<div class="quote-card">${escapeHtml(d.closing_note || '')}</div>`);
+  if (d.overall_pipeline_confidence !== undefined) {
+    h += `<div style="margin-top:20px;text-align:center;">${confidenceBadge(d.overall_pipeline_confidence, 'Pipeline confidence')}</div>`;
+  }
   return h;
 }
 
@@ -1117,6 +1296,7 @@ function escapeHtml(s) {
 // Wire up buttons
 document.getElementById('preflight-btn').onclick = runPreflight;
 document.getElementById('run-btn').onclick = runPipeline;
+window.toggleReasoning = toggleReasoning;  // for inline onclick handlers
 </script>
 </body>
 </html>
