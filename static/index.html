@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Healthtech Orchestrator</title>
+<style>
+  :root {
+    --bg: #fdfaf2;
+    --panel: #f5efe0;
+    --ink: #2a2418;
+    --ink-soft: #5a4f3a;
+    --rule: #d4c8a8;
+    --accent: #c0a868;
+    --accent-deep: #8a7340;
+    --red: #a23e2a;
+    --green: #5a6e3a;
+    --serif: 'Charter', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+    --sans: 'Inter Tight', 'Söhne', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    --mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    min-height: 100vh;
+  }
+  button:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button { font-family: var(--sans); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; }
+
+  /* Masthead */
+  .masthead {
+    border-bottom: 1px solid var(--rule);
+    padding: 20px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .masthead-eyebrow {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 4px;
+  }
+  .masthead-title {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .masthead-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-soft);
+    text-align: right;
+  }
+
+  /* Layout */
+  .body {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    min-height: calc(100vh - 92px);
+  }
+  .sidebar {
+    border-right: 1px solid var(--rule);
+    padding: 24px 22px;
+    overflow-y: auto;
+  }
+  .main {
+    padding: 32px 44px;
+    max-width: 880px;
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 12px;
+    font-family: var(--serif);
+    font-size: 13.5px;
+    line-height: 1.55;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    resize: vertical;
+  }
+
+  .example-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .example-list button {
+    text-align: left;
+    padding: 8px 10px;
+    font-family: var(--serif);
+    font-size: 13px;
+    background: transparent;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    cursor: pointer;
+    font-style: italic;
+  }
+  .example-list button:hover {
+    background: var(--panel);
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--ink);
+  }
+  .checkbox-row input { cursor: pointer; }
+
+  .btn-primary, .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+    border: 1px solid var(--accent-deep);
+    margin-top: 12px;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .btn-primary:disabled { cursor: not-allowed; opacity: 0.5; }
+  .btn-secondary {
+    background: transparent;
+    color: var(--accent-deep);
+    border: 1px solid var(--accent-deep);
+    margin-top: 16px;
+    padding: 8px;
+    font-size: 10px;
+  }
+  .btn-secondary:hover:not(:disabled) { background: var(--panel); }
+  .btn-secondary:disabled { cursor: not-allowed; opacity: 0.5; }
+
+  .status-box {
+    margin-top: 8px;
+    padding: 10px;
+    border: 1px solid;
+    font-family: var(--sans);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .status-box.ok { background: #e8ecdc; border-color: var(--green); color: var(--green); }
+  .status-box.fail { background: #f2dfd8; border-color: var(--red); color: var(--red); }
+  .status-box.info { background: var(--panel); border-color: var(--accent); color: var(--ink); }
+  .status-title {
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 10px;
+    margin-bottom: 4px;
+  }
+  .status-detail { color: var(--ink); }
+  .status-hint {
+    margin-top: 6px;
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+
+  /* Pipeline list */
+  .pipeline-list { margin-top: 4px; }
+  .agent-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 6px;
+    cursor: default;
+    border-left: 2px solid transparent;
+  }
+  .agent-row.clickable { cursor: pointer; }
+  .agent-row.clickable:hover { background: var(--panel); }
+  .agent-row.active { background: var(--panel); border-left-color: var(--accent); }
+  .agent-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-top: 6px;
+    background: var(--rule);
+    flex-shrink: 0;
+  }
+  .agent-dot.running, .agent-dot.validating { background: var(--accent); }
+  .agent-dot.done { background: var(--green); }
+  .agent-dot.error { background: var(--red); }
+  .agent-meta { flex: 1; min-width: 0; }
+  .agent-name {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .agent-name.master { color: var(--accent-deep); }
+  .agent-chapter {
+    font-size: 11px;
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+  .validating-badge { color: var(--accent); }
+
+  /* Main panel content */
+  .main-empty {
+    color: var(--ink-soft);
+  }
+  .main-empty .quote {
+    font-size: 17px;
+    line-height: 1.7;
+    font-style: italic;
+    margin-bottom: 20px;
+  }
+  .main-empty .attribution {
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+  }
+  .main-empty .body-text {
+    margin-top: 40px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+
+  .agent-header {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+  }
+  .agent-header-eyebrow {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 4px;
+  }
+  .agent-header-title {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .validation-block {
+    margin-bottom: 24px;
+    padding: 14px;
+    background: var(--panel);
+    border-left: 3px solid;
+  }
+  .validation-block.pass { border-left-color: var(--green); }
+  .validation-block.fail { border-left-color: var(--red); }
+  .pill {
+    display: inline-block;
+    padding: 2px 10px;
+    margin-right: 6px;
+    margin-bottom: 4px;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    border: 1px solid;
+  }
+  .pill.good { background: #e8ecdc; color: var(--green); border-color: var(--green); }
+  .pill.bad { background: #f2dfd8; color: var(--red); border-color: var(--red); }
+  .pill.warn { background: #f5e9c8; color: var(--accent-deep); border-color: var(--accent); }
+  .pill.neutral { background: var(--panel); color: var(--ink-soft); border-color: var(--rule); }
+
+  .out-section {
+    margin-bottom: 22px;
+  }
+  .out-label {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .out-body {
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--ink);
+  }
+  .kv {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+  .kv-key {
+    min-width: 140px;
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+  .kv-value { color: var(--ink); }
+  .out-body ul { padding-left: 22px; margin: 0; }
+  .out-body li { margin-bottom: 4px; }
+  .nested-block {
+    padding-left: 12px;
+    border-left: 2px solid var(--rule);
+    margin-bottom: 10px;
+  }
+  .nested-block.accent { border-left-color: var(--accent); }
+  .nested-block.red { border-left-color: var(--red); }
+  pre.json-debug {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--bg);
+    padding: 12px;
+    border: 1px solid var(--rule);
+    max-height: 400px;
+    overflow: auto;
+    white-space: pre-wrap;
+    margin: 0;
+  }
+  .debug-block {
+    margin-top: 32px;
+    padding: 16px;
+    background: #f2dfd8;
+    border: 1px solid var(--red);
+  }
+  .quote-card {
+    padding: 16px;
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+    font-style: italic;
+    line-height: 1.7;
+  }
+  .verdict-card {
+    padding: 18px;
+    background: var(--panel);
+    border-left: 4px solid var(--accent);
+    margin-bottom: 20px;
+  }
+  .moat-bar-track {
+    height: 4px;
+    background: var(--panel);
+    margin-bottom: 4px;
+  }
+  .moat-bar-fill {
+    height: 100%;
+    background: var(--accent);
+  }
+  code { font-family: var(--mono); font-size: 12px; background: var(--panel); padding: 1px 5px; }
+
+  /* Footer */
+  .footer {
+    border-top: 1px solid var(--rule);
+    padding: 14px 32px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-soft);
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div>
+    <div class="masthead-eyebrow">The Healthtech Product Strategy Orchestrator</div>
+    <div class="masthead-title">One Master. <em>Seven Specialists.</em> Three Validation Checks.</div>
+  </div>
+  <div class="masthead-meta">
+    v1.0 · Python backend · direct API<br>
+    India-first · evidence-tiered
+  </div>
+</div>
+
+<div class="body">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="section-label">01 · The Brief</div>
+    <textarea id="brief" placeholder="Paste your product brief here. The more specific the better — segment, geography, hypothesis, constraints."></textarea>
+
+    <div style="margin-top: 10px; font-family: var(--sans); font-size: 10px; color: var(--ink-soft); letter-spacing: 0.06em;">
+      OR LOAD AN EXAMPLE
+    </div>
+    <div class="example-list" id="example-list"></div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="skip-validation">
+      <label for="skip-validation">Skip validation passes (faster, ~50% fewer API calls)</label>
+    </div>
+
+    <button class="btn-secondary" id="preflight-btn">Preflight · Check Connectivity</button>
+    <div id="preflight-status"></div>
+
+    <button class="btn-primary" id="run-btn">Run the Pipeline</button>
+
+    <div id="error-box"></div>
+    <div id="progress-box"></div>
+
+    <div class="section-label" style="margin-top: 24px;">02 · The Pipeline</div>
+    <div class="pipeline-list" id="pipeline-list"></div>
+  </div>
+
+  <!-- Main panel -->
+  <div class="main" id="main">
+    <div class="main-empty">
+      <div class="masthead-eyebrow">A note before you begin</div>
+      <div class="quote">
+        "The brief is a hypothesis, not a directive. The first thing this system does
+        is interrogate it — five layers down — before any specialist is permitted
+        to start work. Solutioning before interrogation is the most expensive
+        mistake in product strategy."
+      </div>
+      <div class="attribution">— From Chapter 3, the Manual</div>
+      <div class="body-text">
+        Paste a brief in the left panel — or load one of the three examples — and
+        press <strong>Run the Pipeline</strong>. The Master Orchestrator will run
+        an intake pass, hand off to seven specialists in sequence, run validation
+        between each, and close with a synthesis.<br><br>
+        Each agent corresponds to chapters in the Healthtech Product Strategy Manual.
+        You can click any completed step in the sidebar to inspect its output.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <span>9 agents · 3 validation checks per specialist · India-first methodology</span>
+  <span>Powered by Anthropic API · direct integration</span>
+</div>
+
+<script>
+// ============================================================================
+// State
+// ============================================================================
+const state = {
+  pipeline: [],
+  results: {},        // { agent_id: data }
+  validations: {},    // { agent_id: validation_data }
+  statuses: {},       // { agent_id: 'pending' | 'running' | 'validating' | 'done' | 'error' }
+  rawDebug: {},       // { agent_id: raw_text }
+  activeAgent: null,
+  running: false,
+};
+
+// ============================================================================
+// Bootstrap
+// ============================================================================
+async function init() {
+  const [exRes, plRes] = await Promise.all([
+    fetch('/api/example-briefs').then(r => r.json()),
+    fetch('/api/agent-pipeline').then(r => r.json()),
+  ]);
+  state.pipeline = plRes.pipeline;
+  renderExamples(exRes.briefs);
+  renderPipelineList();
+}
+init();
+
+// ============================================================================
+// Rendering
+// ============================================================================
+function renderExamples(briefs) {
+  const root = document.getElementById('example-list');
+  root.innerHTML = '';
+  briefs.forEach(b => {
+    const btn = document.createElement('button');
+    btn.textContent = b.title;
+    btn.onclick = () => { document.getElementById('brief').value = b.body; };
+    root.appendChild(btn);
+  });
+}
+
+function renderPipelineList() {
+  const root = document.getElementById('pipeline-list');
+  root.innerHTML = '';
+  state.pipeline.forEach((a, i) => {
+    const status = state.statuses[a.id] || 'pending';
+    const isActive = state.activeAgent === a.id;
+    const hasResult = !!state.results[a.id];
+
+    const row = document.createElement('div');
+    row.className = 'agent-row';
+    if (hasResult) row.classList.add('clickable');
+    if (isActive) row.classList.add('active');
+    row.onclick = () => { if (hasResult) selectAgent(a.id); };
+
+    const dot = document.createElement('div');
+    dot.className = 'agent-dot ' + status;
+    if (status === 'running' || status === 'validating') dot.classList.add('pulse');
+
+    const meta = document.createElement('div');
+    meta.className = 'agent-meta';
+    const name = document.createElement('div');
+    name.className = 'agent-name' + (a.is_master ? ' master' : '');
+    const numStr = String(i + 1).padStart(2, '0');
+    name.innerHTML = `${numStr} · ${a.short}` + (a.is_master ? ' <span style="font-style:italic;font-weight:400;">(Master)</span>' : '');
+    const chapter = document.createElement('div');
+    chapter.className = 'agent-chapter';
+    chapter.innerHTML = a.chapter + (status === 'validating' ? ' · <span class="validating-badge">validating</span>' : '');
+    meta.appendChild(name);
+    meta.appendChild(chapter);
+
+    row.appendChild(dot);
+    row.appendChild(meta);
+    root.appendChild(row);
+  });
+}
+
+function setStatus(id, status) {
+  state.statuses[id] = status;
+  renderPipelineList();
+}
+
+function selectAgent(id) {
+  state.activeAgent = id;
+  renderPipelineList();
+  renderMain();
+}
+
+function setProgress(msg) {
+  const root = document.getElementById('progress-box');
+  if (!msg) { root.innerHTML = ''; return; }
+  root.innerHTML = `
+    <div class="status-box info" style="margin-top: 12px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="agent-dot running pulse" style="margin-top:0;"></div>
+        <span style="font-style:italic;">${escapeHtml(msg)}</span>
+      </div>
+    </div>`;
+}
+
+function setError(msg) {
+  const root = document.getElementById('error-box');
+  if (!msg) { root.innerHTML = ''; return; }
+  root.innerHTML = `<div class="status-box fail" style="margin-top:12px;">${escapeHtml(msg)}</div>`;
+}
+
+function setPreflightStatus(result) {
+  const root = document.getElementById('preflight-status');
+  if (!result) { root.innerHTML = ''; return; }
+  if (result === 'checking') {
+    root.innerHTML = `<div class="status-box info">
+      <div class="status-title">Checking…</div>
+      <div class="status-detail">Running stage 1 ping, then stage 2 representative call.</div>
+    </div>`;
+    return;
+  }
+  if (result.ok) {
+    root.innerHTML = `<div class="status-box ok">
+      <div class="status-title">✓ Both stages passed (${result.ms}ms)</div>
+      <div class="status-detail">Ping + representative call both succeeded. Pipeline should run cleanly.</div>
+    </div>`;
+  } else {
+    const hints = {
+      network: "The request never reached the API — check your network and that the server has ANTHROPIC_API_KEY set.",
+      stalled: "The request reached the model but no content came back across retries. Could be throttling or a degraded model state.",
+      http: "The API rejected the request — usually means an invalid API key, wrong model name, or rate limit.",
+      parse: "The model replied but not in the expected JSON shape — odd but harmless. Try again.",
+      shape: "The model replied with valid JSON but the wrong structure.",
+      config: "Server-side configuration issue. Check that ANTHROPIC_API_KEY is set in the environment.",
+    };
+    const stageHint = result.stage === 2 ? " (Stage 1 ping worked — failure is specific to larger requests, the same failure mode a specialist agent would hit.)" : "";
+    root.innerHTML = `<div class="status-box fail">
+      <div class="status-title">✗ Stage ${result.stage || '?'} failed (${result.kind})</div>
+      <div class="status-detail">${escapeHtml(result.message || '')}</div>
+      <div class="status-hint">${escapeHtml(hints[result.kind] || '')}${escapeHtml(stageHint)}</div>
+    </div>`;
+  }
+}
+
+// ============================================================================
+// Pipeline run — SSE consumer over fetch + ReadableStream
+// (EventSource doesn't support POST bodies, so we parse SSE ourselves)
+// ============================================================================
+async function runPipeline() {
+  const brief = document.getElementById('brief').value.trim();
+  if (!brief) { setError('Please paste a product brief first.'); return; }
+  if (brief.length < 20) { setError('Brief is too short (minimum 20 characters).'); return; }
+
+  setError(null);
+  state.results = {};
+  state.validations = {};
+  state.statuses = {};
+  state.rawDebug = {};
+  state.activeAgent = null;
+  state.running = true;
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn').textContent = 'Pipeline Running…';
+  renderPipelineList();
+  renderMain();
+
+  const skipValidation = document.getElementById('skip-validation').checked;
+
+  try {
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+      body: JSON.stringify({ brief, skip_validation: skipValidation }),
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`HTTP ${res.status}: ${t.slice(0, 200)}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // Split on event boundary (blank line)
+      const events = buf.split(/\n\n/);
+      buf = events.pop();  // last fragment may be incomplete
+      for (const ev of events) handleSSEEvent(ev);
+    }
+  } catch (e) {
+    setError(`Pipeline error: ${e.message}`);
+  } finally {
+    state.running = false;
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('run-btn').textContent = 'Run the Pipeline';
+    setProgress(null);
+  }
+}
+
+function handleSSEEvent(eventBlock) {
+  const lines = eventBlock.split('\n');
+  let eventName = 'message';
+  let dataParts = [];
+  for (const line of lines) {
+    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+    else if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+  }
+  if (dataParts.length === 0) return;
+  let data;
+  try { data = JSON.parse(dataParts.join('\n')); } catch { return; }
+
+  switch (eventName) {
+    case 'start':
+      // Initialise statuses
+      data.pipeline.forEach(a => state.statuses[a.id] = 'pending');
+      renderPipelineList();
+      break;
+    case 'agent_start':
+      setStatus(data.id, 'running');
+      state.activeAgent = data.id;
+      setProgress(progressMsgFor(data.id, 'running'));
+      renderMain();
+      break;
+    case 'agent_validating':
+      setStatus(data.id, 'validating');
+      setProgress(progressMsgFor(data.id, 'validating'));
+      break;
+    case 'agent_done':
+      state.results[data.id] = data.data;
+      if (data.validation) state.validations[data.id] = data.validation;
+      setStatus(data.id, 'done');
+      state.activeAgent = data.id;
+      renderMain();
+      break;
+    case 'agent_error':
+      state.rawDebug[data.id] = data.raw || '';
+      setStatus(data.id, 'error');
+      state.activeAgent = data.id;
+      setError(`Agent "${data.id}" failed: ${data.error || 'unknown error'}`);
+      renderMain();
+      break;
+    case 'fatal':
+      setError(`Fatal: ${data.message}`);
+      break;
+    case 'done':
+      setProgress('Pipeline complete.');
+      setTimeout(() => setProgress(null), 2000);
+      break;
+  }
+}
+
+function progressMsgFor(agentId, status) {
+  const a = state.pipeline.find(x => x.id === agentId);
+  const label = a ? a.short : agentId;
+  if (status === 'validating') return `Master validating ${label} output…`;
+  if (agentId === 'master_intake') return 'Master Orchestrator interrogating the brief…';
+  if (agentId === 'synthesis') return 'Master Orchestrator synthesising final verdict…';
+  return `${label} specialist working…`;
+}
+
+// ============================================================================
+// Preflight
+// ============================================================================
+async function runPreflight() {
+  document.getElementById('preflight-btn').disabled = true;
+  document.getElementById('preflight-btn').textContent = 'Checking…';
+  setPreflightStatus('checking');
+  try {
+    const res = await fetch('/api/preflight');
+    const data = await res.json();
+    setPreflightStatus(data);
+  } catch (e) {
+    setPreflightStatus({ ok: false, kind: 'network', message: e.message });
+  } finally {
+    document.getElementById('preflight-btn').disabled = false;
+    document.getElementById('preflight-btn').textContent = 'Re-check Connectivity';
+  }
+}
+
+// ============================================================================
+// Main panel rendering — one renderer per agent
+// ============================================================================
+function renderMain() {
+  const root = document.getElementById('main');
+  if (!state.activeAgent) {
+    // Restore the empty state
+    root.innerHTML = `
+      <div class="main-empty">
+        <div class="masthead-eyebrow">A note before you begin</div>
+        <div class="quote">"The brief is a hypothesis, not a directive. The first thing this system does is interrogate it — five layers down — before any specialist is permitted to start work. Solutioning before interrogation is the most expensive mistake in product strategy."</div>
+        <div class="attribution">— From Chapter 3, the Manual</div>
+        <div class="body-text">Paste a brief in the left panel — or load one of the three examples — and press <strong>Run the Pipeline</strong>. The Master Orchestrator will run an intake pass, hand off to seven specialists in sequence, run validation between each, and close with a synthesis.<br><br>Each agent corresponds to chapters in the Healthtech Product Strategy Manual. You can click any completed step in the sidebar to inspect its output.</div>
+      </div>`;
+    return;
+  }
+
+  const a = state.pipeline.find(x => x.id === state.activeAgent);
+  const data = state.results[state.activeAgent];
+  const validation = state.validations[state.activeAgent];
+  const status = state.statuses[state.activeAgent];
+  const rawDebug = state.rawDebug[state.activeAgent];
+
+  let html = `
+    <div class="agent-header">
+      <div class="agent-header-eyebrow">Agent · ${escapeHtml(a.chapter)}</div>
+      <div class="agent-header-title">${escapeHtml(a.label)}</div>
+    </div>`;
+
+  if (validation) {
+    const passed = validation.passes_validation;
+    html += `<div class="validation-block ${passed ? 'pass' : 'fail'}">
+      <div class="out-label">Master Validation Pass</div>
+      <div style="margin-bottom:8px;">
+        ${pillForValidation('Source', validation.source_check?.status)}
+        ${pillForValidation('Consistency', validation.consistency_check?.status)}
+        ${pillForValidation('Completeness', validation.completeness_check?.status)}
+      </div>
+      <div style="font-size:13.5px;font-style:italic;">${escapeHtml(validation.overall_note || '')}</div>
+    </div>`;
+  }
+
+  if (data) {
+    html += renderAgentData(state.activeAgent, data);
+  } else if (status === 'running' || status === 'validating') {
+    html += `<div class="out-body" style="font-style:italic;color:var(--ink-soft);">Working…</div>`;
+  }
+
+  if (rawDebug !== undefined) {
+    html += `<div class="debug-block">
+      <div class="out-label" style="color:var(--red);">Debug · Raw Output (JSON parse failed)</div>`;
+    if (rawDebug && rawDebug.trim()) {
+      html += `<div style="font-size:13px;margin-bottom:10px;">The model's response could not be parsed as JSON, even after retry. Below is the raw response — usually this happens when the response was truncated or wrapped in unexpected prose.</div>
+        <pre class="json-debug">${escapeHtml(rawDebug)}</pre>
+        <div style="margin-top:10px;font-family:var(--sans);font-size:11px;font-style:italic;">Length: ${rawDebug.length} characters</div>`;
+    } else {
+      html += `<div style="font-size:13px;line-height:1.6;">
+        <strong>The model returned an empty response.</strong> Both attempts produced no text.<br><br>
+        Most likely causes:
+        <ul style="margin:8px 0;padding-left:22px;">
+          <li>Transient API hiccup — try Run Pipeline again.</li>
+          <li>Rate limit hit — wait a minute and retry.</li>
+          <li>System prompt + brief together hit a content filter (rare).</li>
+        </ul>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  root.innerHTML = html;
+}
+
+function pillForValidation(label, status) {
+  const tone = status === 'pass' ? 'good' : status === 'warn' ? 'warn' : 'bad';
+  return `<span class="pill ${tone}">${label}: ${status || 'n/a'}</span>`;
+}
+
+// ----- Agent-specific renderers -----
+function renderAgentData(id, d) {
+  switch (id) {
+    case 'master_intake': return renderMasterIntake(d);
+    case 'market':        return renderMarket(d);
+    case 'consumer':      return renderConsumer(d);
+    case 'strategy':      return renderStrategy(d);
+    case 'product':       return renderProduct(d);
+    case 'regulatory':    return renderRegulatory(d);
+    case 'metrics':       return renderMetrics(d);
+    case 'design':        return renderDesign(d);
+    case 'synthesis':     return renderSynthesis(d);
+    default:              return `<pre class="json-debug">${escapeHtml(JSON.stringify(d, null, 2))}</pre>`;
+  }
+}
+
+function section(label, body) {
+  return `<div class="out-section"><div class="out-label">${escapeHtml(label)}</div><div class="out-body">${body}</div></div>`;
+}
+function kv(k, v) {
+  if (v === undefined || v === null || v === '') return '';
+  return `<div class="kv"><span class="kv-key">${escapeHtml(k)}</span><span class="kv-value">${escapeHtml(String(v))}</span></div>`;
+}
+function bullets(items) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  return '<ul>' + items.map(it => `<li>${escapeHtml(typeof it === 'string' ? it : JSON.stringify(it))}</li>`).join('') + '</ul>';
+}
+
+function renderMasterIntake(d) {
+  const verdictTone = d.go_no_go?.startsWith('GO') ? 'good' : d.go_no_go?.startsWith('KILL') ? 'bad' : 'warn';
+  let h = '';
+  h += section('Interpreted Brief', `<em>${escapeHtml(d.interpreted_brief || '')}</em>`);
+  h += section('Verdict', `<span class="pill ${verdictTone}">${escapeHtml(d.go_no_go || '')}</span><div style="margin-top:8px;">${escapeHtml(d.rationale || '')}</div>`);
+  let whysHtml = '';
+  (d.five_whys || []).forEach(w => {
+    whysHtml += `<div style="margin-bottom:8px;"><div class="out-label" style="margin-bottom:2px;">${escapeHtml(w.layer)}</div>${escapeHtml(w.answer || '')}</div>`;
+  });
+  h += section('The Five Why Layers', whysHtml);
+  let aLedger = '';
+  (d.assumption_ledger || []).forEach(a => {
+    const tone = a.status === 'Tested' ? 'good' : a.status === 'Untestable' ? 'bad' : 'warn';
+    aLedger += `<div class="nested-block"><span class="pill ${tone}">${escapeHtml(a.status)}</span> ${escapeHtml(a.assumption || '')}${a.note ? `<div style="font-style:italic;color:var(--ink-soft);font-size:13px;margin-top:2px;">${escapeHtml(a.note)}</div>` : ''}</div>`;
+  });
+  h += section('Assumption Ledger', aLedger);
+  let stkMap = '';
+  (d.stakeholder_map || []).forEach(s => {
+    stkMap += `<div style="margin-bottom:10px;"><div class="out-label" style="margin-bottom:4px;">${escapeHtml(s.role)}</div>${kv('Incentive', s.incentive)}${kv('Tension with', s.tension_with)}</div>`;
+  });
+  h += section('Stakeholder Map', stkMap);
+  return h;
+}
+
+function renderMarket(d) {
+  let h = '';
+  h += section('India Market',
+    kv('Size', d.india_market?.size_estimate) +
+    kv('Growth outlook', d.india_market?.growth_outlook) +
+    kv('Tier 1/2/3 split', d.india_market?.tier_1_2_3_split) +
+    kv('Evidence tier', d.india_market?.evidence_tier) +
+    `<div style="margin-top:8px;">${bullets(d.india_market?.key_dynamics)}</div>`
+  );
+  h += section('vs United States',
+    kv('Size', d.us_comparison?.size_estimate) +
+    `<div style="margin-top:6px;font-weight:600;">Structural differences</div>${bullets(d.us_comparison?.structural_differences)}` +
+    `<div style="margin-top:6px;font-weight:600;">Transferable</div>${bullets(d.us_comparison?.transferable_lessons)}` +
+    `<div style="margin-top:6px;font-weight:600;">Non-transferable</div>${bullets(d.us_comparison?.non_transferable)}`
+  );
+  h += section(`vs ${d.comparator_country?.country || 'Comparator'}`,
+    `<em>${escapeHtml(d.comparator_country?.why_chosen || '')}</em>` +
+    `<div style="margin-top:6px;">${escapeHtml(d.comparator_country?.size_and_dynamics || '')}</div>` +
+    `<div style="margin-top:6px;font-weight:600;">What they did right</div>${bullets(d.comparator_country?.what_they_did_right)}` +
+    `<div style="margin-top:6px;font-weight:600;color:var(--red);">What failed when imported</div>${bullets(d.comparator_country?.what_failed_when_imported)}`
+  );
+  h += section('TAM / SAM / SOM (bottom-up)',
+    kv('TAM', d.tam_sam_som?.tam) +
+    kv('SAM', d.tam_sam_som?.sam) +
+    kv('SOM (Y3)', d.tam_sam_som?.som_year_3) +
+    `<div style="margin-top:6px;font-style:italic;color:var(--ink-soft);">Key assumptions</div>${bullets(d.tam_sam_som?.key_assumptions)}`
+  );
+  let comp = '';
+  (d.competitive_landscape || []).forEach(c => {
+    comp += `<div class="nested-block"><div style="font-weight:600;">${escapeHtml(c.name)}</div>${kv('Positioning', c.positioning)}${kv('Moat', c.moat)}${kv('Vulnerability', c.vulnerability)}</div>`;
+  });
+  h += section('Competitive Landscape', comp);
+  h += section('Import Failure Risks', bullets(d.import_failure_risks));
+  return h;
+}
+
+function renderConsumer(d) {
+  const p = d.primary_persona || {};
+  let h = '';
+  let primary = `<div style="font-size:22px;font-weight:600;margin-bottom:4px;">${escapeHtml(p.name || '')}, ${escapeHtml(String(p.age || ''))}</div>`;
+  primary += `<div style="color:var(--ink-soft);font-style:italic;margin-bottom:10px;">${escapeHtml(p.occupation || '')} · ${escapeHtml(p.city_name || '')} (${escapeHtml(p.city_tier || '')}) · ₹${escapeHtml(p.household_income_inr_monthly || '')}/mo</div>`;
+  primary += kv('Demographics', p.demographics);
+  primary += `<div style="margin-top:10px;font-weight:600;">Psychographics (India layer)</div>`;
+  Object.entries(p.psychographics || {}).forEach(([k, v]) => primary += kv(k.replace(/_/g, ' '), v));
+  primary += `<div style="margin-top:10px;font-weight:600;">Jobs to be Done</div>${bullets(p.jobs_to_be_done)}`;
+  primary += `<div style="margin-top:6px;font-weight:600;">Current workarounds</div>${bullets(p.current_workarounds)}`;
+  primary += `<div style="margin-top:6px;font-weight:600;color:var(--green);">Triggers to adopt</div>${bullets(p.triggers_to_adopt)}`;
+  primary += `<div style="margin-top:6px;font-weight:600;color:var(--red);">Barriers</div>${bullets(p.barriers_to_adopt)}`;
+  primary += `<div style="margin-top:6px;font-weight:600;">Moments of truth</div>${bullets(p.moments_of_truth)}`;
+  h += section('Primary Persona', primary);
+  h += section('Caregiver Persona',
+    kv('Relationship', d.caregiver_persona?.relationship) +
+    kv('Name', d.caregiver_persona?.name) +
+    kv('Role in decision', d.caregiver_persona?.role_in_decision) +
+    bullets(d.caregiver_persona?.what_they_need)
+  );
+  h += section('Churned Persona',
+    kv('Name', d.churned_persona?.name) +
+    `<div style="font-weight:600;">Why they left</div>${bullets(d.churned_persona?.why_they_left)}` +
+    `<div style="font-weight:600;">What would bring them back</div>${bullets(d.churned_persona?.what_would_bring_back)}`
+  );
+  let lifecycle = '';
+  (d.lifecycle_journey || []).forEach(s => {
+    lifecycle += `<div class="nested-block accent"><div class="out-label" style="margin-bottom:4px;">${escapeHtml(s.state)}</div>${kv('What they feel', s.what_they_feel)}${kv('What we must do', s.what_we_must_do)}</div>`;
+  });
+  h += section('Lifecycle Journey (5 states)', lifecycle);
+  return h;
+}
+
+function renderStrategy(d) {
+  let h = '';
+  h += section('Segmentation',
+    kv('Primary', d.segmentation?.primary_segment) +
+    kv('Secondary', d.segmentation?.secondary_segment) +
+    kv('Excluded', d.segmentation?.explicitly_excluded)
+  );
+  h += section('Positioning',
+    `<div style="font-size:18px;font-style:italic;margin-bottom:10px;color:var(--accent-deep);">"${escapeHtml(d.positioning?.one_line_value_prop || '')}"</div>` +
+    kv('vs Incumbent', d.positioning?.vs_incumbent) +
+    kv('vs Workaround', d.positioning?.vs_alternative_workaround) +
+    kv('vs Do Nothing', d.positioning?.vs_do_nothing)
+  );
+  let bpa = '';
+  (d.build_partner_acquire || []).forEach(b => {
+    const tone = b.decision === 'Build' ? 'good' : b.decision === 'Acquire' ? 'warn' : 'neutral';
+    bpa += `<div style="margin-bottom:8px;"><span class="pill ${tone}">${escapeHtml(b.decision)}</span><span style="font-weight:600;margin-left:4px;">${escapeHtml(b.capability)}</span><div style="font-size:13px;color:var(--ink-soft);margin-left:4px;">${escapeHtml(b.rationale || '')}</div></div>`;
+  });
+  h += section('Build / Partner / Acquire', bpa);
+  h += section('Strategic Posture',
+    `<span class="pill warn">${escapeHtml(d.strategic_posture?.chosen || '')}</span>` +
+    `<div style="margin-top:8px;">${escapeHtml(d.strategic_posture?.why || '')}</div>` +
+    `<div style="margin-top:6px;font-style:italic;color:var(--red);">Trade-off: ${escapeHtml(d.strategic_posture?.what_we_give_up || '')}</div>`
+  );
+  h += section('Go-to-Market Motion',
+    kv('Channel', d.gtm_motion?.channel) +
+    kv('Wedge', d.gtm_motion?.wedge) +
+    kv('First 100 users', d.gtm_motion?.first_100_users) +
+    kv('First 10K users', d.gtm_motion?.first_10000_users)
+  );
+  h += section('12-Month Bets', bullets(d.twelve_month_bets));
+  return h;
+}
+
+function renderProduct(d) {
+  const m = d.mvp_scope || {};
+  const prd = d.prd || {};
+  let h = '';
+  let mvp = `<div style="margin-bottom:10px;padding:10px 14px;background:var(--panel);border-left:3px solid var(--accent);"><div class="out-label" style="margin-bottom:4px;">Riskiest assumption</div>${escapeHtml(m.riskiest_assumption_being_tested || '')}</div>`;
+  mvp += `<div style="font-weight:600;color:var(--green);">CRITICAL — must build</div>${bullets(m.critical)}`;
+  mvp += `<div style="font-weight:600;margin-top:6px;">SHOULD-HAVE — v1.1</div>${bullets(m.should_have)}`;
+  mvp += `<div style="font-weight:600;margin-top:6px;">EDGE — handle gracefully</div>${bullets(m.edge)}`;
+  mvp += `<div style="font-weight:600;margin-top:6px;color:var(--red);">VISION — explicitly NOT MVP</div>${bullets(m.vision)}`;
+  mvp += `<div style="margin-top:10px;font-style:italic;color:var(--ink-soft);">Definition of done: ${escapeHtml(m.definition_of_done || '')}</div>`;
+  h += section('MVP Scope (CSEV)', mvp);
+  let journey = '';
+  (d.user_journey || []).forEach(s => {
+    journey += `<div class="nested-block"><div class="out-label" style="margin-bottom:4px;">${escapeHtml(s.stage)}</div>${kv('User does', s.user_action)}${kv('System responds', s.system_response)}${kv('Friction to remove', s.friction_to_remove)}</div>`;
+  });
+  h += section('User Journey (6 stages)', journey);
+  h += section('PRD — Problem & Metrics',
+    `<div style="font-size:16px;font-style:italic;margin-bottom:10px;">${escapeHtml(prd.problem_statement || '')}</div>` +
+    kv('North Star', prd.success_metrics?.north_star) +
+    `<div style="font-weight:600;margin-top:6px;">Input metrics</div>${bullets(prd.success_metrics?.input_metrics)}` +
+    `<div style="font-weight:600;margin-top:6px;">Guardrails</div>${bullets(prd.success_metrics?.guardrails)}`
+  );
+  h += section('User Stories', bullets(prd.user_stories));
+  h += section('Functional Requirements', bullets(prd.functional_requirements));
+  let nfr = '';
+  Object.entries(prd.non_functional_requirements || {}).forEach(([k, v]) => nfr += kv(k.replace(/_/g, ' '), v));
+  h += section('Non-Functional Requirements', nfr);
+  h += section('Edge Cases', bullets(prd.edge_cases));
+  h += section('API Spec Pattern', `<pre class="json-debug">${escapeHtml(JSON.stringify(prd.api_spec_pattern || {}, null, 2))}</pre>`);
+  return h;
+}
+
+function renderRegulatory(d) {
+  let h = '';
+  const tone = d.recommended_posture === 'Compliant' ? 'good' : d.recommended_posture === 'Arbitrage' ? 'bad' : 'warn';
+  h += section('Recommended Posture',
+    `<span class="pill ${tone}">${escapeHtml(d.recommended_posture || '')}</span><div style="margin-top:8px;">${escapeHtml(d.posture_rationale || '')}</div>`
+  );
+  let inst = '';
+  (d.applicable_instruments || []).filter(i => i.applies).forEach(i => {
+    inst += `<div class="nested-block accent"><div style="font-weight:600;font-size:15px;">${escapeHtml(i.instrument)}</div><div style="font-size:13px;color:var(--ink-soft);margin-bottom:4px;">Obligations</div>${bullets(i.specific_obligations)}<div style="font-size:13px;margin-top:4px;color:var(--red);">Cost of non-compliance: ${escapeHtml(i.non_compliance_cost || '')}</div></div>`;
+  });
+  h += section('Applicable Instruments', inst);
+  h += section('Operational Load',
+    kv('Licenses needed', (d.operational_load?.licenses_needed || []).join(', ')) +
+    kv('Audit cadence', d.operational_load?.audit_cadence) +
+    kv('Compliance team size', d.operational_load?.estimated_compliance_team_size) +
+    kv('Setup cost (₹)', d.operational_load?.estimated_setup_cost_inr)
+  );
+  h += section('Redlines', `<div style="background:#f2dfd8;padding:10px;border:1px solid var(--red);">${bullets(d.redlines)}</div>`);
+  return h;
+}
+
+function renderMetrics(d) {
+  const t = d.metric_tree || {};
+  let h = '';
+  h += section('North Star',
+    `<div style="font-size:18px;font-weight:600;margin-bottom:4px;">${escapeHtml(t.north_star?.metric || '')}</div>` +
+    `<div style="font-style:italic;color:var(--ink-soft);margin-bottom:6px;">${escapeHtml(t.north_star?.definition || '')}</div>` +
+    `<span class="pill warn">Year 1 target: ${escapeHtml(t.north_star?.target_year_1 || '')}</span>`
+  );
+  let tree = '';
+  ['acquisition','activation','adherence','retention','outcome','revenue','referral'].forEach(stage => {
+    tree += `<div style="margin-bottom:10px;"><div class="out-label" style="margin-bottom:4px;">${stage}</div>`;
+    (t[stage] || []).forEach(m => {
+      tree += `<div style="margin-bottom:4px;"><strong>${escapeHtml(m.metric)}</strong> — target ${escapeHtml(m.target || '')}${m.evidence_plan ? `<span style="font-style:italic;color:var(--ink-soft);"> · ${escapeHtml(m.evidence_plan)}</span>` : ''}</div>`;
+    });
+    tree += `</div>`;
+  });
+  h += section('Metric Tree (A-A-Ad-R-O-Rev-Ref)', tree);
+  let moats = '';
+  (d.moats || []).forEach(m => {
+    const score = parseInt(m.applicability) || 0;
+    moats += `<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span style="font-weight:600;">${escapeHtml(m.moat)}</span><span style="font-family:var(--mono);font-size:12px;">${escapeHtml(m.applicability || '')}/10</span></div><div class="moat-bar-track"><div class="moat-bar-fill" style="width:${score*10}%;"></div></div><div style="font-size:13px;color:var(--ink-soft);">${escapeHtml(m.build_plan || '')}</div></div>`;
+  });
+  h += section('Moat Scoring', moats);
+  h += section('Primary Moat Focus', `<div class="quote-card">${escapeHtml(d.primary_moat_focus || '')}</div>`);
+  let evid = '';
+  (d.evidence_plan || []).forEach(e => {
+    evid += `<div class="nested-block"><div style="font-weight:600;">${escapeHtml(e.experiment || '')}</div>${kv('Hypothesis', e.hypothesis)}${kv('Success threshold', e.success_threshold)}${kv('Timeline', e.timeline)}${kv('Cost (₹)', e.cost_inr)}</div>`;
+  });
+  h += section('Evidence Plan', evid);
+  h += section('What Survives if Tech Changes', `<div class="quote-card" style="border-left-color:var(--green);">${escapeHtml(d.what_survives_if_tech_changes || '')}</div>`);
+  return h;
+}
+
+function renderDesign(d) {
+  const r = d.roadmap || {};
+  let h = '';
+  let roadmap = '';
+  [['horizon_1_launch','H1 · LAUNCH'],['horizon_2_scale','H2 · SCALE'],['horizon_3_moat','H3 · MOAT']].forEach(([key, label]) => {
+    const obj = r[key];
+    if (!obj) return;
+    roadmap += `<div class="nested-block accent"><div class="out-label" style="margin-bottom:4px;">${label} · ${escapeHtml(obj.duration || '')}</div><div style="font-weight:600;margin-top:4px;">${escapeHtml(obj.objective || '')}</div><div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Deliverables</div>${bullets(obj.deliverables)}<div style="font-size:13px;margin-top:4px;color:var(--red);">Kill criteria: ${escapeHtml(obj.kill_criteria || '')}</div></div>`;
+  });
+  h += section('Roadmap — Three Horizons', roadmap);
+  if (d.core_flowchart) {
+    let fc = `<div class="json-debug" style="font-family:var(--mono);"><div style="margin-bottom:8px;font-weight:600;">Nodes</div>`;
+    (d.core_flowchart.nodes || []).forEach(n => fc += `[${escapeHtml(n.id)}] ${escapeHtml(n.label)} <em style="color:var(--ink-soft);">(${escapeHtml(n.type)})</em><br>`);
+    fc += `<div style="margin-top:10px;margin-bottom:4px;font-weight:600;">Edges</div>`;
+    (d.core_flowchart.edges || []).forEach(e => fc += `${escapeHtml(e.from)} → ${escapeHtml(e.to)} ${e.condition ? `<em style="color:var(--ink-soft);">[${escapeHtml(e.condition)}]</em>` : ''}<br>`);
+    fc += `</div>`;
+    h += section(`Core Flowchart · ${escapeHtml(d.core_flowchart.title || '')}`, fc);
+  }
+  let screens = '';
+  (d.prototype_spec?.screens || []).forEach(s => {
+    screens += `<div class="nested-block"><div style="font-weight:600;">${escapeHtml(s.name)}</div>${kv('Purpose', s.purpose)}<div style="font-size:13px;color:var(--ink-soft);">Key elements</div>${bullets(s.key_elements)}<div style="font-size:13px;color:var(--ink-soft);margin-top:4px;">Trust signals</div>${bullets(s.trust_signals)}<div style="font-size:13px;margin-top:4px;"><em>i18n:</em> ${escapeHtml(s.i18n_notes || '')}</div></div>`;
+  });
+  h += section('Prototype Spec — Screens', screens);
+  h += section('Interactions', bullets(d.prototype_spec?.interactions));
+  h += section('Demo Data', `<em>${escapeHtml(d.prototype_spec?.demo_data || '')}</em>`);
+  return h;
+}
+
+function renderSynthesis(d) {
+  let h = '';
+  h += `<div class="verdict-card"><div class="out-label">Executive Verdict</div><div style="font-size:16px;line-height:1.6;">${escapeHtml(d.executive_verdict || '')}</div></div>`;
+  h += section('The Real Problem', escapeHtml(d.the_real_problem || ''));
+  h += section('The Wedge', `<div style="font-size:16px;font-style:italic;">${escapeHtml(d.the_wedge || '')}</div>`);
+  h += section('The Moat', `<div style="font-size:16px;font-style:italic;color:var(--green);">${escapeHtml(d.the_moat || '')}</div>`);
+  let risks = '';
+  (d.top_3_risks || []).forEach(r => {
+    const tone = r.likelihood === 'high' ? 'bad' : r.likelihood === 'med' ? 'warn' : 'neutral';
+    risks += `<div class="nested-block red"><span class="pill ${tone}">${escapeHtml(r.likelihood)}</span><span style="font-weight:600;margin-left:4px;">${escapeHtml(r.risk)}</span><div style="font-style:italic;color:var(--ink-soft);margin-top:4px;">Mitigation: ${escapeHtml(r.mitigation || '')}</div></div>`;
+  });
+  h += section('Top 3 Risks', risks);
+  h += section('Next 30 Days — Do', bullets(d.what_to_do_in_next_30_days));
+  h += section('Next 30 Days — Don\'t', `<div style="background:#f2dfd8;padding:10px;border:1px solid var(--red);">${bullets(d.what_NOT_to_do)}</div>`);
+  h += section('Closing Note · The Pragmatic Visionary', `<div class="quote-card">${escapeHtml(d.closing_note || '')}</div>`);
+  return h;
+}
+
+// ============================================================================
+// Utils
+// ============================================================================
+function escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Wire up buttons
+document.getElementById('preflight-btn').onclick = runPreflight;
+document.getElementById('run-btn').onclick = runPipeline;
+</script>
+</body>
+</html>
